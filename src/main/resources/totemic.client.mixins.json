@@ -1,0 +1,12 @@
+{
+	"required": true,
+	"package": "io.github.unknownassets.totemic.client.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"ItemStackTooltipMixin",
+		"TitleScreenMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
