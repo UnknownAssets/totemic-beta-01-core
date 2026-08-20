@@ -8,10 +8,13 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.DeathProtection;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(LivingEntity.class)
@@ -71,9 +74,27 @@ public abstract class LivingEntityMixin implements TotemicDamageCapture {
 		if (callback.getReturnValue()) {
 			ServerPlayer player = (ServerPlayer)(Object)this;
 			TotemicMinecraftBridge.consumeSupportsAfterVanilla(player, this.totemic$pending);
+			TotemicMinecraftBridge.applySelectedDeathEffects(player, this.totemic$pending);
 			TotemicMinecraftBridge.announceResolution(player, this.totemic$pending);
 		}
 		this.totemic$pending = null;
+	}
+
+	@Redirect(
+		method = "checkTotemDeathProtection",
+		at = @At(
+			value = "INVOKE",
+			target = "Lnet/minecraft/world/item/component/DeathProtection;applyEffects(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/LivingEntity;)V"
+		)
+	)
+	private void totemic$deferSelectedDeathEffects(
+		DeathProtection deathProtection,
+		ItemStack activator,
+		LivingEntity entity
+	) {
+		if (this.totemic$pending == null) {
+			deathProtection.applyEffects(activator, entity);
+		}
 	}
 
 	@Inject(method = "hurtServer", at = @At("RETURN"))

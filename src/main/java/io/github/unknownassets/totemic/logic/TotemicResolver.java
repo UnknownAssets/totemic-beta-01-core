@@ -19,27 +19,22 @@ public final class TotemicResolver {
 		}
 
 		List<Selection> selections = new ArrayList<>();
-		selections.add(oneUnit(activator));
-		if (activator.unlimited()) {
-			return result(Outcome.PROTECTED, rawPmd, effectivePmd, snapshot.roundingPolicy(), selections);
-		}
-		BigDecimal remaining = subtractFiniteCapacity(BigDecimal.valueOf(effectivePmd), activator);
+		CandidateUse activatorUse = useCandidateStack(activator, BigDecimal.valueOf(effectivePmd), true);
+		selections.add(selection(activator, activatorUse.units));
+		BigDecimal remaining = activatorUse.remaining;
 		if (remaining.signum() == 0) {
 			return result(Outcome.PROTECTED, rawPmd, effectivePmd, snapshot.roundingPolicy(), selections);
 		}
 
 		if (snapshot.mainHand().isPresent() && snapshot.offHand().isPresent()) {
 			TotemCandidate secondHand = snapshot.offHand().get();
-			if (secondHand.unlimited()) {
-				selections.add(oneUnit(secondHand));
-				return result(Outcome.PROTECTED, rawPmd, effectivePmd, snapshot.roundingPolicy(), selections);
+			CandidateUse secondHandUse = useCandidateStack(secondHand, remaining, false);
+			if (secondHandUse.units > 0) {
+				selections.add(selection(secondHand, secondHandUse.units));
+				remaining = secondHandUse.remaining;
 			}
-			if (secondHand.capacity() > 0.0) {
-				selections.add(oneUnit(secondHand));
-				remaining = subtractFiniteCapacity(remaining, secondHand);
-				if (remaining.signum() == 0) {
-					return result(Outcome.PROTECTED, rawPmd, effectivePmd, snapshot.roundingPolicy(), selections);
-				}
+			if (remaining.signum() == 0) {
+				return result(Outcome.PROTECTED, rawPmd, effectivePmd, snapshot.roundingPolicy(), selections);
 			}
 		}
 
@@ -81,16 +76,39 @@ public final class TotemicResolver {
 		return remaining.subtract(BigDecimal.valueOf(poolResult.totalCapacity())).max(BigDecimal.ZERO);
 	}
 
-	private static BigDecimal subtractFiniteCapacity(BigDecimal remaining, TotemCandidate candidate) {
-		return remaining.subtract(BigDecimal.valueOf(candidate.capacity())).max(BigDecimal.ZERO);
-	}
-
 	private static BigDecimal nonNegativeDifference(double minuend, double subtrahend) {
 		return BigDecimal.valueOf(minuend).subtract(BigDecimal.valueOf(subtrahend)).max(BigDecimal.ZERO);
 	}
 
-	private static Selection oneUnit(TotemCandidate candidate) {
-		return new Selection(candidate.slot(), 1, candidate.capacityValue());
+	private static CandidateUse useCandidateStack(TotemCandidate candidate, BigDecimal remaining, boolean activator) {
+		int selectedUnits = activator ? 1 : 0;
+		if (candidate.unlimited()) {
+			return new CandidateUse(1, BigDecimal.ZERO);
+		}
+
+		BigDecimal unitCapacity = BigDecimal.valueOf(candidate.capacity());
+		if (activator) {
+			remaining = remaining.subtract(unitCapacity).max(BigDecimal.ZERO);
+		}
+		if (remaining.signum() == 0 || unitCapacity.signum() == 0) {
+			return new CandidateUse(selectedUnits, remaining);
+		}
+
+		int availableUnits = candidate.units() - selectedUnits;
+		if (availableUnits <= 0) {
+			return new CandidateUse(selectedUnits, remaining);
+		}
+		BigDecimal requiredUnits = remaining.divide(unitCapacity, 0, java.math.RoundingMode.CEILING);
+		int additionalUnits = requiredUnits.compareTo(BigDecimal.valueOf(availableUnits)) >= 0
+			? availableUnits
+			: requiredUnits.intValueExact();
+		selectedUnits += additionalUnits;
+		remaining = remaining.subtract(unitCapacity.multiply(BigDecimal.valueOf(additionalUnits))).max(BigDecimal.ZERO);
+		return new CandidateUse(selectedUnits, remaining);
+	}
+
+	private static Selection selection(TotemCandidate candidate, int units) {
+		return new Selection(candidate.slot(), units, candidate.capacityValue());
 	}
 
 	private static TotemicResolution notApplicable(double rawPmd, double effectivePmd, PmdRoundingPolicy policy) {
@@ -109,5 +127,8 @@ public final class TotemicResolver {
 		boolean includesUnlimited = selections.stream().anyMatch(Selection::unlimited);
 		return new TotemicResolution(outcome, rawPmd, effectivePmd,
 			policy != PmdRoundingPolicy.EXACT, committed, includesUnlimited, selections);
+	}
+
+	private record CandidateUse(int units, BigDecimal remaining) {
 	}
 }

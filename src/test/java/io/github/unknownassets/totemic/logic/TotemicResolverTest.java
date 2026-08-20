@@ -186,6 +186,92 @@ class TotemicResolverTest {
 		assertEquals(2, support.selections().size());
 	}
 
+	@Test
+	void consumesTheWholeMainHandStackBeforeUsingStorage() {
+		TotemicResolution resolution = resolver.resolve(snapshot(
+			20,
+			112,
+			new TotemCandidate(SemanticSlot.mainHand(), 10, 8),
+			null,
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 10, 8)),
+			List.of()
+		));
+
+		assertEquals(Outcome.PROTECTED, resolution.outcome());
+		assertEquals(100.0, resolution.committedCapacity());
+		assertEquals(8, resolution.selections().get(0).units());
+		assertEquals(SemanticSlot.mainHand(), resolution.selections().get(0).slot());
+		assertEquals(2, resolution.selections().get(1).units());
+		assertEquals(SemanticSlot.storage(9), resolution.selections().get(1).slot());
+	}
+
+	@Test
+	void consumesOffHandStackBeforeStorageAndHotbar() {
+		TotemicResolution resolution = resolver.resolve(snapshot(
+			20,
+			47,
+			new TotemCandidate(SemanticSlot.mainHand(), 5, 3),
+			new TotemCandidate(SemanticSlot.offHand(), 5, 3),
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 5, 3)),
+			List.of(new TotemCandidate(SemanticSlot.hotbar(0), 5, 3))
+		));
+
+		assertEquals(Outcome.PROTECTED, resolution.outcome());
+		assertEquals(List.of(SemanticSlot.mainHand(), SemanticSlot.offHand()),
+			resolution.selections().stream().map(TotemicResolution.Selection::slot).toList());
+		assertEquals(3, resolution.selections().get(0).units());
+		assertEquals(3, resolution.selections().get(1).units());
+	}
+
+	@Test
+	void offHandActivatorUsesItsRemainingStackBeforeInventory() {
+		TotemicResolution resolution = resolver.resolve(snapshot(
+			20,
+			38,
+			null,
+			new TotemCandidate(SemanticSlot.offHand(), 5, 4),
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 5, 4)),
+			List.of()
+		));
+
+		assertEquals(Outcome.PROTECTED, resolution.outcome());
+		assertEquals(4, resolution.selections().getFirst().units());
+		assertEquals(1, resolution.selections().size());
+	}
+
+	@Test
+	void insufficientFailureCommitsEveryUsefulHandAndInventoryUnit() {
+		TotemicResolution resolution = resolver.resolve(snapshot(
+			20,
+			100,
+			new TotemCandidate(SemanticSlot.mainHand(), 5, 3),
+			new TotemCandidate(SemanticSlot.offHand(), 5, 2),
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 5, 4)),
+			List.of(new TotemCandidate(SemanticSlot.hotbar(0), 5, 2))
+		));
+
+		assertEquals(Outcome.INSUFFICIENT, resolution.outcome());
+		assertEquals(55.0, resolution.committedCapacity());
+		assertEquals(List.of(3, 2, 4, 2),
+			resolution.selections().stream().map(TotemicResolution.Selection::units).toList());
+	}
+
+	@Test
+	void zeroCapacityActivatorDoesNotWasteTheRestOfItsStack() {
+		TotemicResolution resolution = resolver.resolve(snapshot(
+			20,
+			30,
+			new TotemCandidate(SemanticSlot.mainHand(), 0, 64),
+			null,
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 5, 2)),
+			List.of()
+		));
+
+		assertEquals(Outcome.PROTECTED, resolution.outcome());
+		assertEquals(1, resolution.selections().get(0).units());
+		assertEquals(2, resolution.selections().get(1).units());
+	}
+
 	private static DeathProtectionSnapshot snapshot(
 		double previousHealth,
 		double appliedDamage,

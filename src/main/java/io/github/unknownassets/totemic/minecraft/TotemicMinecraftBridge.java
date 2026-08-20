@@ -19,6 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
 public final class TotemicMinecraftBridge {
 	private static final TotemicResolver RESOLVER = new TotemicResolver();
@@ -46,6 +47,32 @@ public final class TotemicMinecraftBridge {
 
 	public static void consumeSupportsAfterVanilla(ServerPlayer player, Pending pending) {
 		consume(player, pending.resolution.selections(), true);
+	}
+
+	public static void applySelectedDeathEffects(ServerPlayer player, Pending pending) {
+		List<TotemicDeathEffects.Source> sources = selectedDeathEffectSources(
+			pending.resolution,
+			slot -> {
+				ExpectedStack expectedStack = pending.expected.get(slot);
+				return expectedStack == null ? ItemStack.EMPTY : expectedStack.stack;
+			}
+		);
+		TotemicDeathEffects.apply(player, sources);
+	}
+
+	static List<TotemicDeathEffects.Source> selectedDeathEffectSources(
+		TotemicResolution resolution,
+		Function<SemanticSlot, ItemStack> stackAt
+	) {
+		List<TotemicDeathEffects.Source> sources = new ArrayList<>();
+		for (TotemicResolution.Selection selection : resolution.selections()) {
+			ItemStack stack = stackAt.apply(selection.slot());
+			if (stack == null || stack.isEmpty()) {
+				throw new IllegalStateException("missing effect source");
+			}
+			sources.add(new TotemicDeathEffects.Source(stack, selection.units()));
+		}
+		return List.copyOf(sources);
 	}
 
 	public static void announceResolution(ServerPlayer player, Pending pending) {
