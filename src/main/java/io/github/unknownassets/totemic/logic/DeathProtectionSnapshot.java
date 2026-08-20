@@ -9,8 +9,20 @@ public record DeathProtectionSnapshot(
 	Optional<TotemCandidate> mainHand,
 	Optional<TotemCandidate> offHand,
 	List<TotemCandidate> storage,
-	List<TotemCandidate> hotbar
+	List<TotemCandidate> hotbar,
+	PmdRoundingPolicy roundingPolicy
 ) {
+	public DeathProtectionSnapshot(
+		double previousHealth,
+		double appliedDamage,
+		Optional<TotemCandidate> mainHand,
+		Optional<TotemCandidate> offHand,
+		List<TotemCandidate> storage,
+		List<TotemCandidate> hotbar
+	) {
+		this(previousHealth, appliedDamage, mainHand, offHand, storage, hotbar, PmdRoundingPolicy.EXACT);
+	}
+
 	public DeathProtectionSnapshot {
 		if (!Double.isFinite(previousHealth) || previousHealth < 0.0) {
 			throw new IllegalArgumentException("previousHealth");
@@ -22,5 +34,8 @@ public record DeathProtectionSnapshot(
 		offHand = offHand == null ? Optional.empty() : offHand;
 		storage = storage == null ? List.of() : storage.stream().sorted((left, right) -> left.slot().compareTo(right.slot())).toList();
 		hotbar = hotbar == null ? List.of() : hotbar.stream().sorted((left, right) -> left.slot().compareTo(right.slot())).toList();
+		if (roundingPolicy == null) {
+			throw new IllegalArgumentException("roundingPolicy");
+		}
 	}
 }

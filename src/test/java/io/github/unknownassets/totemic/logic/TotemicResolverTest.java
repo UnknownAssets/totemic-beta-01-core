@@ -96,6 +96,96 @@ class TotemicResolverTest {
 		assertTrue(resolution.selections().stream().noneMatch(selection -> selection.slot().equals(SemanticSlot.offHand())));
 	}
 
+	@Test
+	void exactPmdPolicyPreservesFractionalDamage() {
+		TotemicResolution resolution = resolver.resolve(snapshot(
+			20,
+			32.4999,
+			candidate(SemanticSlot.mainHand(), 12),
+			null,
+			List.of(candidate(SemanticSlot.storage(9), 0.5)),
+			List.of()
+		));
+
+		assertEquals(12.4999, resolution.rawPmd(), 1.0e-9);
+		assertEquals(12.4999, resolution.effectivePmd(), 1.0e-9);
+		assertEquals(Outcome.PROTECTED, resolution.outcome());
+		assertEquals(12.5, resolution.committedCapacity());
+	}
+
+	@Test
+	void decimalSubtractionDoesNotInventAnExtraMilliPoint() {
+		TotemicResolution resolution = resolver.resolve(snapshot(
+			20,
+			32.3,
+			candidate(SemanticSlot.mainHand(), 12),
+			null,
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 0.1, 3)),
+			List.of()
+		));
+
+		assertEquals(Outcome.PROTECTED, resolution.outcome());
+		assertEquals(3, resolution.selections().get(1).units());
+		assertEquals(12.3, resolution.committedCapacity(), 1.0e-9);
+	}
+
+	@Test
+	void halfUpPmdPolicyRoundsOnlyThePmd() {
+		TotemicResolution below = resolver.resolve(snapshot(
+			20,
+			32.4999,
+			candidate(SemanticSlot.mainHand(), 12),
+			null,
+			List.of(),
+			List.of(),
+			PmdRoundingPolicy.HALF_UP
+		));
+		TotemicResolution tie = resolver.resolve(snapshot(
+			20,
+			32.5,
+			candidate(SemanticSlot.mainHand(), 12),
+			null,
+			List.of(candidate(SemanticSlot.storage(9), 1)),
+			List.of(),
+			PmdRoundingPolicy.HALF_UP
+		));
+
+		assertEquals(12.4999, below.rawPmd(), 1.0e-9);
+		assertEquals(12.0, below.effectivePmd());
+		assertTrue(below.roundingEnabled());
+		assertEquals(Outcome.PROTECTED, below.outcome());
+		assertEquals(12.5, tie.rawPmd());
+		assertEquals(13.0, tie.effectivePmd());
+		assertEquals(Outcome.PROTECTED, tie.outcome());
+	}
+
+	@Test
+	void unlimitedActivatorAndSupportAreTypedAndSufficient() {
+		TotemicResolution activator = resolver.resolve(snapshot(
+			20,
+			1_000,
+			TotemCandidate.unlimited(SemanticSlot.mainHand(), 1),
+			null,
+			List.of(),
+			List.of()
+		));
+		TotemicResolution support = resolver.resolve(snapshot(
+			20,
+			1_000,
+			candidate(SemanticSlot.mainHand(), 1),
+			null,
+			List.of(TotemCandidate.unlimited(SemanticSlot.storage(9), 64)),
+			List.of()
+		));
+
+		assertEquals(Outcome.PROTECTED, activator.outcome());
+		assertTrue(activator.includesUnlimited());
+		assertTrue(activator.selections().getFirst().unlimited());
+		assertEquals(Outcome.PROTECTED, support.outcome());
+		assertTrue(support.includesUnlimited());
+		assertEquals(2, support.selections().size());
+	}
+
 	private static DeathProtectionSnapshot snapshot(
 		double previousHealth,
 		double appliedDamage,
@@ -104,13 +194,26 @@ class TotemicResolverTest {
 		List<TotemCandidate> storage,
 		List<TotemCandidate> hotbar
 	) {
+		return snapshot(previousHealth, appliedDamage, mainHand, offHand, storage, hotbar, PmdRoundingPolicy.EXACT);
+	}
+
+	private static DeathProtectionSnapshot snapshot(
+		double previousHealth,
+		double appliedDamage,
+		TotemCandidate mainHand,
+		TotemCandidate offHand,
+		List<TotemCandidate> storage,
+		List<TotemCandidate> hotbar,
+		PmdRoundingPolicy roundingPolicy
+	) {
 		return new DeathProtectionSnapshot(
 			previousHealth,
 			appliedDamage,
 			Optional.ofNullable(mainHand),
 			Optional.ofNullable(offHand),
 			storage,
-			hotbar
+			hotbar,
+			roundingPolicy
 		);
 	}
 

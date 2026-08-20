@@ -52,9 +52,11 @@ public abstract class LivingEntityMixin implements TotemicDamageCapture {
 		if (outcome == TotemicResolution.Outcome.PROTECTED) {
 			this.totemic$pending = pending;
 		} else if (outcome == TotemicResolution.Outcome.INSUFFICIENT) {
+			// Event 35 resolves its displayed stack from the entity's current hands.
+			// Send it before shrinking/synchronizing so the real activator is still present.
+			player.level().broadcastEntityEvent(player, (byte)35);
 			TotemicMinecraftBridge.consumeFailure(player, pending);
 			TotemicMinecraftBridge.announceResolution(player, pending);
-			player.level().broadcastEntityEvent(player, (byte)35);
 			callback.setReturnValue(false);
 		} else if (outcome == TotemicResolution.Outcome.ABORTED_CONFLICT) {
 			callback.setReturnValue(false);
