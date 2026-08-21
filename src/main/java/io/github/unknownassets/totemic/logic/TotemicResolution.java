@@ -15,6 +15,7 @@ public record TotemicResolution(
 		NOT_APPLICABLE,
 		PROTECTED,
 		INSUFFICIENT,
+		VANILLA_DELEGATED,
 		ABORTED_CONFLICT
 	}
 

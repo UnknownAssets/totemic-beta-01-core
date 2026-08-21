@@ -13,9 +13,18 @@ public final class TotemicResolver {
 	public TotemicResolution resolve(DeathProtectionSnapshot snapshot) {
 		double rawPmd = nonNegativeDifference(snapshot.appliedDamage(), snapshot.previousHealth()).doubleValue();
 		double effectivePmd = snapshot.roundingPolicy().apply(rawPmd);
+		if (snapshot.mainHand().isPresent()
+			&& snapshot.excludedHands().contains(SemanticSlot.mainHand())) {
+			return result(Outcome.VANILLA_DELEGATED, rawPmd, effectivePmd,
+				snapshot.roundingPolicy(), List.of());
+		}
 		TotemCandidate activator = snapshot.mainHand().orElseGet(() -> snapshot.offHand().orElse(null));
 		if (activator == null) {
 			return notApplicable(rawPmd, effectivePmd, snapshot.roundingPolicy());
+		}
+		if (snapshot.excludedHands().contains(activator.slot())) {
+			return result(Outcome.VANILLA_DELEGATED, rawPmd, effectivePmd,
+				snapshot.roundingPolicy(), List.of());
 		}
 
 		List<Selection> selections = new ArrayList<>();
@@ -28,6 +37,10 @@ public final class TotemicResolver {
 
 		if (snapshot.mainHand().isPresent() && snapshot.offHand().isPresent()) {
 			TotemCandidate secondHand = snapshot.offHand().get();
+			if (snapshot.excludedHands().contains(secondHand.slot())) {
+				return result(Outcome.VANILLA_DELEGATED, rawPmd, effectivePmd,
+					snapshot.roundingPolicy(), selections);
+			}
 			CandidateUse secondHandUse = useCandidateStack(secondHand, remaining, false);
 			if (secondHandUse.units > 0) {
 				selections.add(selection(secondHand, secondHandUse.units));
@@ -44,8 +57,12 @@ public final class TotemicResolver {
 		}
 
 		remaining = resolvePool(snapshot.hotbar(), remaining, selections);
-		return result(remaining.signum() == 0 ? Outcome.PROTECTED : Outcome.INSUFFICIENT,
-			rawPmd, effectivePmd, snapshot.roundingPolicy(), selections);
+		if (remaining.signum() == 0) {
+			return result(Outcome.PROTECTED, rawPmd, effectivePmd,
+				snapshot.roundingPolicy(), selections);
+		}
+		return result(Outcome.INSUFFICIENT, rawPmd, effectivePmd,
+			snapshot.roundingPolicy(), snapshot.consumeOnFailure() ? selections : List.of());
 	}
 
 	private BigDecimal resolvePool(List<TotemCandidate> pool, BigDecimal remaining, List<Selection> selections) {

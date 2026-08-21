@@ -5,8 +5,10 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TotemicResolverTest {
@@ -270,6 +272,113 @@ class TotemicResolverTest {
 		assertEquals(Outcome.PROTECTED, resolution.outcome());
 		assertEquals(1, resolution.selections().get(0).units());
 		assertEquals(2, resolution.selections().get(1).units());
+	}
+
+	@Test
+	void preserveOnFailureLeavesEveryCandidateUncommitted() {
+		DeathProtectionSnapshot snapshot = new DeathProtectionSnapshot(
+			20,
+			100,
+			Optional.of(new TotemCandidate(SemanticSlot.mainHand(), 5, 3)),
+			Optional.empty(),
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 5, 4)),
+			List.of(),
+			PmdRoundingPolicy.EXACT,
+			false,
+			Set.of()
+		);
+
+		TotemicResolution resolution = resolver.resolve(snapshot);
+
+		assertEquals(Outcome.INSUFFICIENT, resolution.outcome());
+		assertEquals(0.0, resolution.committedCapacity());
+		assertTrue(resolution.selections().isEmpty());
+	}
+
+	@Test
+	void excludedMainHandDelegatesImmediatelyToVanilla() {
+		DeathProtectionSnapshot snapshot = new DeathProtectionSnapshot(
+			20,
+			100,
+			Optional.of(new TotemCandidate(SemanticSlot.mainHand(), 5, 64)),
+			Optional.of(new TotemCandidate(SemanticSlot.offHand(), 5, 64)),
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 5, 64)),
+			List.of(),
+			PmdRoundingPolicy.EXACT,
+			true,
+			Set.of(SemanticSlot.mainHand())
+		);
+
+		TotemicResolution resolution = resolver.resolve(snapshot);
+
+		assertEquals(Outcome.VANILLA_DELEGATED, resolution.outcome());
+		assertTrue(resolution.selections().isEmpty());
+	}
+
+	@Test
+	void excludedOffHandDelegatesAfterExhaustingTheMainHandStack() {
+		DeathProtectionSnapshot snapshot = new DeathProtectionSnapshot(
+			20,
+			40,
+			Optional.of(new TotemCandidate(SemanticSlot.mainHand(), 5, 3)),
+			Optional.of(new TotemCandidate(SemanticSlot.offHand(), 5, 1)),
+			List.of(new TotemCandidate(SemanticSlot.storage(9), 100, 1)),
+			List.of(),
+			PmdRoundingPolicy.EXACT,
+			true,
+			Set.of(SemanticSlot.offHand())
+		);
+
+		TotemicResolution resolution = resolver.resolve(snapshot);
+
+		assertEquals(Outcome.VANILLA_DELEGATED, resolution.outcome());
+		assertEquals(List.of(SemanticSlot.mainHand()),
+			resolution.selections().stream().map(TotemicResolution.Selection::slot).toList());
+		assertEquals(3, resolution.selections().getFirst().units());
+		assertEquals(15.0, resolution.committedCapacity());
+	}
+
+	@Test
+	void excludedOffHandIsNotConsultedWhenMainHandAlreadyCoversThePmd() {
+		DeathProtectionSnapshot snapshot = new DeathProtectionSnapshot(
+			20,
+			30,
+			Optional.of(new TotemCandidate(SemanticSlot.mainHand(), 5, 3)),
+			Optional.of(new TotemCandidate(SemanticSlot.offHand(), 5, 1)),
+			List.of(),
+			List.of(),
+			PmdRoundingPolicy.EXACT,
+			true,
+			Set.of(SemanticSlot.offHand())
+		);
+
+		TotemicResolution resolution = resolver.resolve(snapshot);
+
+		assertEquals(Outcome.PROTECTED, resolution.outcome());
+		assertEquals(2, resolution.selections().getFirst().units());
+	}
+
+	@Test
+	void snapshotRejectsCandidatesAssignedToTheWrongSemanticPool() {
+		assertThrows(IllegalArgumentException.class, () -> new DeathProtectionSnapshot(
+			20,
+			30,
+			Optional.of(new TotemCandidate(SemanticSlot.storage(9), 5, 1)),
+			Optional.empty(),
+			List.of(),
+			List.of()
+		));
+		assertThrows(IllegalArgumentException.class, () -> new DeathProtectionSnapshot(
+			20,
+			30,
+			Optional.empty(),
+			Optional.empty(),
+			List.of(),
+			List.of(),
+			PmdRoundingPolicy.EXACT,
+			true,
+			Set.of(SemanticSlot.offHand())
+		));
 	}
 
 	private static DeathProtectionSnapshot snapshot(
